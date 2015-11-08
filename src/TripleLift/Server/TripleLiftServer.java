@@ -46,10 +46,7 @@ public class TripleLiftServer {
 			connectAndFetch(ID);
 		}
 		
-		// Print advertiser IDs whose data could not be found.
-		System.out.println(errorLog);
-		
-		return output();
+		return errorLog +  output();
 	}
 	
 	// Get data from server for each Advertiser ID.

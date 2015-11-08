@@ -61,7 +61,5 @@ public class TestCases {
 		else{
 			System.out.println(" - Testcase " + no + " failed. X");
 		}
-		System.out.println("==========X==========");
-		System.out.println();
 	}
 }
