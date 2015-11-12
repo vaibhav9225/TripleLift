@@ -9,50 +9,37 @@ import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.TreeMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.Map.Entry;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 // Triple Lift Server Emulator Class.
-public class TripleLiftServer {
-	
+public class TripleLiftServer implements Runnable{
+
+	private int advertiserID = 0;
 	private int TIMEOUT = 2000;
-	private String errorLog = ""; // Can be implemented using String Buffers for longer logs.
-	private String urlString = "http://dan.triplelift.net/code_test.php?advertiser_id=";
-	private TreeMap<String, Long[]> dataMap = new TreeMap<String, Long[]>(Collections.reverseOrder()); // TreeMap used to provide ordering.
+	private static StringBuffer errorLog = new StringBuffer(); // Implemented using String Buffers for longer logs.
+	private static String urlString = "http://dan.triplelift.net/code_test.php?advertiser_id=";
+	private static ConcurrentSkipListMap<String, Long[]> dataMap = new ConcurrentSkipListMap<String, Long[]>(Collections.reverseOrder()); // TreeMap used to provide ordering.
 	
-	public TripleLiftServer(){ /* Use default URL and Timeout. */ }
+	public TripleLiftServer(int advertiserID){
+		this.advertiserID = advertiserID;
+	}
 	
-	public void setURL(String urlString){
-		this.urlString = urlString;
+	public void setURL(String url){
+		urlString = url;
 	}
 	
 	// Timeout time in milliseconds.
 	public void setTimeout(int timeout){
 		this.TIMEOUT = timeout;
-	}
-	
-	// Method to call to fetch data by date for
-	public String fetchData(long[] idArray){
-		
-		// Remove duplicates by pushing IDs into HashSet.
-		LinkedHashSet<Long> idSet = new LinkedHashSet<Long>();
-		for(int i=0; i<idArray.length; i++){
-			idSet.add(idArray[i]);
-		}
-		for(long ID : idSet){
-			connectAndFetch(ID);
-		}
-		
-		return errorLog +  output();
-	}
+	}	
 	
 	// Get data from server for each Advertiser ID.
-	public void connectAndFetch(long ID){
+	public void connectAndFetch(){
 		try{
-			URL url = new URL(urlString + ID);
+			URL url = new URL(urlString + advertiserID);
 			URLConnection connection = url.openConnection();
 			connection.setConnectTimeout(TIMEOUT);
 			connection.setReadTimeout(TIMEOUT);
@@ -69,11 +56,15 @@ public class TripleLiftServer {
 			System.out.println("Invalid URL.");
 		}
 		catch (SocketTimeoutException e){
-			errorLog += "The data for advertiser ID: " + ID + " could not be retrieved.\n";
+			errorLog.append("The data for advertiser ID: " + advertiserID + " could not be retrieved.\n");
 		}
 		catch (IOException e){
 			System.out.println("IO Exception Occured.");
 		}
+	}
+	
+	public void exitThread(){
+		errorLog.append("The data for advertiser ID: " + advertiserID + " could not be retrieved.\n");
 	}
 	
 	// Create data map from JSON Object.
@@ -85,23 +76,26 @@ public class TripleLiftServer {
 			long impressions = Long.parseLong(jsonObject.getValue("num_impressions", true));
 			long clicks = Long.parseLong(jsonObject.getValue("num_clicks", true));
 			Long[] data;
-			if(dataMap.containsKey(date)){
-				data = dataMap.get(date);
-				data[0] += impressions;
-				data[1] += clicks;
+			synchronized(dataMap){
+				if(dataMap.containsKey(date)){
+					data = dataMap.get(date);
+					data[0] += impressions;
+					data[1] += clicks;
+				}
+				else{
+					data = new Long[2];
+					data[0] = impressions;
+					data[1] = clicks;
+				}
+				dataMap.put(date, data);
 			}
-			else{
-				data = new Long[2];
-				data[0] = impressions;
-				data[1] = clicks;
-			}
-			dataMap.put(date, data);
 		}
 	}
 	
 	// Dump all aggregated data.
-	public String output(){
+	public static String output(){
 		String output = "";
+		if(!errorLog.toString().equals("")) System.out.print(errorLog.toString());
 		for(Entry<String, Long[]> entry : dataMap.entrySet()){
 			Long[] data = entry.getValue();
 			output += entry.getKey() + ": " + "Impressions = " + data[0] + ", Clicks = " + data[1] + "\n";
@@ -110,7 +104,17 @@ public class TripleLiftServer {
 	}
 	
 	public String getLog(){
-		return errorLog;
+		return errorLog.toString();
+	}
+	
+	public void reset(){
+		errorLog = new StringBuffer();
+		dataMap = new ConcurrentSkipListMap<String, Long[]>(Collections.reverseOrder());
+	}
+
+	@Override
+	public void run() {
+		connectAndFetch();
 	}
 }
 
